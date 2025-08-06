@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 from concurrent.futures import ThreadPoolExecutor
-from utils.toxin import  run_toxin_scan
+from toxin import  run_toxin_scan
 
 app = Flask(__name__)
 
@@ -40,4 +40,5 @@ def xss_scan():
     
 
 if __name__ == '__main__':
+
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)),debug=True)
