@@ -1,10 +1,10 @@
 # Use official Python image
 FROM python:3.10
 
-# Set working dir and install Python deps
+# Install your application dependencies
 WORKDIR /app
-# First copy ONLY requirements.txt
-COPY requirements.txt ./
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -12,8 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install git (if not already in your base image)
 RUN apt-get update && apt-get install -y --no-install-recommends git
 
-# Clone Toxssin repository to /app/toxssin directory
-RUN git clone https://github.com/t3l3machus/toxssin.git /app/toxssin
+# Clone Toxssin
+RUN git clone https://github.com/t3l3machus/toxssin.git /app/toxssin && \
+    cd /app/toxssin && \
+    pip install -r requirements.txt
 
 # Install Toxssin's Python dependencies
 RUN pip install --no-cache-dir -r /app/toxssin/requirements.txt
@@ -36,4 +38,5 @@ RUN mkdir -p /dev/shm && chmod 1777 /dev/shm
 COPY . /app
 EXPOSE 8080
 CMD ["python", "main.py"]
+
 
