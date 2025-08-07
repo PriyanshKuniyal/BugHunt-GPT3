@@ -23,89 +23,66 @@ def validate_toxin_installation() -> bool:
         return False
 
 def run_toxin_scan(target_url: str) -> Dict[str, Any]:
-    """Robust XSS scanner with guaranteed response structure"""
-    DEFAULT_RESPONSE = {
+    """Final robust version with guaranteed response structure"""
+    response_template = {
         'status': 'failed',
         'success': False,
         'tested_url': target_url,
-        'xss_vulnerabilities': [],
-        'scan_stats': {
-            'requests': 0,
-            'tested_params': 0,
-            'success_rate': 0.0,
-            'time': '00:00:00'
+        'findings': {
+            'vulnerabilities': [],
+            'scan_stats': {
+                'requests': 0,
+                'tested_params': 0,
+                'success_rate': 0.0,
+                'time': '00:00:00'
+            },
+            'valid': False
         },
         'error': None,
         'debug': {}
     }
 
     try:
-        # Validate installation first
         if not validate_toxin_installation():
-            return {
-                **DEFAULT_RESPONSE,
-                'error': 'Toxssin not properly installed',
-                'debug': {'installation_check': False}
-            }
+            response_template['error'] = 'Toxssin not properly installed'
+            response_template['debug']['installation_check'] = False
+            return response_template
 
-        base_args = [
-            '--fast',
-            '--threads=5',
-            '--timeout=20',
-            '--no-crawl',
-            '--smart',
-            '--retries=2',
-            '--verbose',
-            '-u', target_url
-        ]
-
-        # Run the scan
         proc = subprocess.run(
-            ['python', '/app/toxssin/toxssin.py'] + base_args,
+            ['python', '/app/toxssin/toxssin.py', '-u', target_url,
+             '--fast', '--threads=5', '--timeout=20', '--no-crawl'],
             capture_output=True,
             text=True,
-            timeout=300,
-            check=False
+            timeout=300
         )
 
-        # Parse results
+        # Parse output and update response
         findings, parse_error = parse_toxin_output(proc.stdout)
-        
-        response = {
-            **DEFAULT_RESPONSE,
-            'status': 'completed' if proc.returncode == 0 and findings.get('valid', False) else 'failed',
-            'success': proc.returncode == 0 and findings.get('valid', False),
-            'xss_vulnerabilities': findings.get('vulnerabilities', []),
-            'scan_stats': findings.get('scan_stats', DEFAULT_RESPONSE['scan_stats']),
+        response_template.update({
+            'status': 'completed' if proc.returncode == 0 and findings['valid'] else 'failed',
+            'success': proc.returncode == 0 and findings['valid'],
+            'findings': findings,
             'debug': {
                 'return_code': proc.returncode,
-                'output_sample': f"{proc.stdout[:200]}...",
-                'parser_valid': findings.get('valid', False),
-                'stderr_sample': proc.stderr[:200] if proc.stderr else None
+                'output_sample': proc.stdout[:200] + '...' if proc.stdout else None,
+                'stderr_sample': proc.stderr[:200] + '...' if proc.stderr else None
             }
-        }
+        })
 
         if parse_error:
-            response['error'] = parse_error
-            response['debug']['parse_error'] = parse_error
+            response_template['error'] = parse_error
 
-        if proc.returncode != 0:
-            response['error'] = response.get('error', '') + f" | Process exited with code {proc.returncode}"
-
-        return response
+        return response_template
 
     except subprocess.TimeoutExpired:
-        return {
-            **DEFAULT_RESPONSE,
-            'error': 'Scan timed out after 5 minutes',
-            'debug': {'timeout': True}
-        }
+        response_template['error'] = 'Scan timed out after 5 minutes'
+        response_template['debug']['timeout'] = True
+        return response_template
     except Exception as e:
-        return {
-            **DEFAULT_RESPONSE,
-            'error': f"Unexpected error: {str(e)}",
-            'debug': {'exception': str(e)}
-        }
+        response_template['error'] = f"Unexpected error: {str(e)}"
+        response_template['debug']['exception'] = str(e)
+        return response_template
+
 
 
 
