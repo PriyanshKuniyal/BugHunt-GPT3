@@ -22,76 +22,90 @@ def validate_toxin_installation() -> bool:
         logger.error(f"Toxssin validation failed: {str(e)}")
         return False
 
-def parse_toxin_output(output: str) -> Tuple[Dict[str, Any], str]:
-    """Enhanced output parser with detailed validation"""
-    error_msg = ""
-    result = {
-        'vulnerabilities': [],
+def run_toxin_scan(target_url: str) -> Dict[str, Any]:
+    """Robust XSS scanner with guaranteed response structure"""
+    DEFAULT_RESPONSE = {
+        'status': 'failed',
+        'success': False,
+        'tested_url': target_url,
+        'xss_vulnerabilities': [],
         'scan_stats': {
             'requests': 0,
             'tested_params': 0,
             'success_rate': 0.0,
             'time': '00:00:00'
         },
-        'valid': False
+        'error': None,
+        'debug': {}
     }
 
-    # Basic sanity check
-    if not output or "Toxssin" not in output:
-        error_msg = "No valid Toxssin output detected"
-        return result, error_msg
-
     try:
-        # Parse vulnerabilities
-        vuln_matches = re.finditer(
-            r'\[VULNERABLE\] URL: (.+?)\n.*?Parameter: (.+?)\n.*?Payload: (.+?)(?:\n|$)',
-            output,
-            re.DOTALL
-        )
-        result['vulnerabilities'] = [
-            {'url': m.group(1), 'parameter': m.group(2), 'payload': m.group(3)}
-            for m in vuln_matches
+        # Validate installation first
+        if not validate_toxin_installation():
+            return {
+                **DEFAULT_RESPONSE,
+                'error': 'Toxssin not properly installed',
+                'debug': {'installation_check': False}
+            }
+
+        base_args = [
+            '--fast',
+            '--threads=5',
+            '--timeout=20',
+            '--no-crawl',
+            '--smart',
+            '--retries=2',
+            '--verbose',
+            '-u', target_url
         ]
 
-        # Parse statistics with defensive programming
-        stats_patterns = {
-            'requests': (r'Total requests:\s+(\d+)', 0),
-            'tested_params': (r'Tested parameters:\s+(\d+)', 0),
-            'success_rate': (r'Success rate:\s+([\d.]+)%', 0.0),
-            'time': (r'Time taken:\s+([\d:.]+)', '00:00:00')
-        }
-
-        for stat, (pattern, default) in stats_patterns.items():
-            match = re.search(pattern, output)
-            if match:
-                try:
-                    result['scan_stats'][stat] = type(default)(match.group(1))
-                    
-                    # Additional validation
-                    if stat == 'success_rate':
-                        if result['scan_stats'][stat] > 100:
-                            result['scan_stats'][stat] = 100.0
-                        elif result['scan_stats'][stat] < 0:
-                            result['scan_stats'][stat] = 0.0
-                    elif stat in ['requests', 'tested_params'] and result['scan_stats'][stat] < 0:
-                        result['scan_stats'][stat] = 0
-                        
-                except (ValueError, TypeError) as e:
-                    logger.warning(f"Value conversion failed for {stat}: {str(e)}")
-                    result['scan_stats'][stat] = default
-            else:
-                result['scan_stats'][stat] = default
-
-        result['valid'] = bool(result['vulnerabilities']) or any(
-            v > 0 if isinstance(v, (int, float)) else v != '00:00:00'
-            for v in result['scan_stats'].values()
+        # Run the scan
+        proc = subprocess.run(
+            ['python', '/app/toxssin/toxssin.py'] + base_args,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False
         )
 
-    except Exception as e:
-        error_msg = f"Output parsing error: {str(e)}"
-        logger.error(f"{error_msg}\nOutput snippet: {output[:500]}...")
+        # Parse results
+        findings, parse_error = parse_toxin_output(proc.stdout)
+        
+        response = {
+            **DEFAULT_RESPONSE,
+            'status': 'completed' if proc.returncode == 0 and findings.get('valid', False) else 'failed',
+            'success': proc.returncode == 0 and findings.get('valid', False),
+            'xss_vulnerabilities': findings.get('vulnerabilities', []),
+            'scan_stats': findings.get('scan_stats', DEFAULT_RESPONSE['scan_stats']),
+            'debug': {
+                'return_code': proc.returncode,
+                'output_sample': f"{proc.stdout[:200]}...",
+                'parser_valid': findings.get('valid', False),
+                'stderr_sample': proc.stderr[:200] if proc.stderr else None
+            }
+        }
 
-    return result, error_msg
+        if parse_error:
+            response['error'] = parse_error
+            response['debug']['parse_error'] = parse_error
+
+        if proc.returncode != 0:
+            response['error'] = response.get('error', '') + f" | Process exited with code {proc.returncode}"
+
+        return response
+
+    except subprocess.TimeoutExpired:
+        return {
+            **DEFAULT_RESPONSE,
+            'error': 'Scan timed out after 5 minutes',
+            'debug': {'timeout': True}
+        }
+    except Exception as e:
+        return {
+            **DEFAULT_RESPONSE,
+            'error': f"Unexpected error: {str(e)}",
+            'debug': {'exception': str(e)}
+        }
 
 def run_toxin_scan(target_url: str) -> Dict[str, Any]:
     """Completely rewritten scanner with comprehensive diagnostics"""
@@ -164,4 +178,5 @@ def run_toxin_scan(target_url: str) -> Dict[str, Any]:
             'tested_url': target_url,
             'debug': {'exception': str(e)}
         }
+
 
