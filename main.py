@@ -11,35 +11,33 @@ def home():
 
 @app.route('/xss_scan', methods=['POST'])
 def xss_scan():
-    data = request.get_json()
-    
-    if not data or 'url' not in data:
-        return jsonify({'error': 'URL required'}), 400
+    try:
+        data = request.get_json()
+        if not data or 'url' not in data:
+            return jsonify({
+                'status': 'failed',
+                'error': 'Missing URL parameter'
+            }), 400
 
-    args = [
-        '-u', data['url'],
-        '--method', data.get('method', 'GET'),
-        '--delay', '0',
-        '--timeout', '15'
-    ]
+        result = run_toxin_scan(data['url'])
+        return jsonify({
+            'status': result['status'],
+            'xss_vulnerabilities': result['findings']['vulnerabilities'],
+            'scan_stats': result['findings']['scan_stats'],
+            'tested_url': result['tested_url'],
+            'error': result.get('error')
+        })
 
-    if data.get('cookies'):
-        args.extend(['--cookies', data['cookies'][:1024]])
-    
-    if data.get('headers'):
-        args.extend(['--headers', data['headers'][:1024]])
-
-    result = run_toxin_scan(args)
-    
-    return jsonify({
-        'status': 'completed' if result['success'] else 'failed',
-        'xss_vulnerabilities': result['findings']['vulnerabilities'],
-        'scan_stats': result['findings']['scan_stats'],
-        'tested_url': data['url']
-    })
+    except Exception as e:
+        return jsonify({
+            'status': 'failed',
+            'error': f'Server error: {str(e)}',
+            'tested_url': data.get('url', 'unknown')
+        }), 500
     
 
 if __name__ == '__main__':
 
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)))
+
 
