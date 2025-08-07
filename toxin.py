@@ -66,21 +66,26 @@ def parse_toxin_output(output: str) -> Tuple[Dict[str, Any], str]:
             if match:
                 try:
                     result['scan_stats'][stat] = type(default)(match.group(1))
-                if stat == 'success_rate' and result['scan_stats'][stat] > 100:
-                    result['scan_stats'][stat] = 100.0
-                elif stat in ['requests', 'tested_params'] and result['scan_stats'][stat] < 0:
-                    result['scan_stats'][stat] = 0
-            except (ValueError, TypeError):
+                    
+                    # Additional validation
+                    if stat == 'success_rate':
+                        if result['scan_stats'][stat] > 100:
+                            result['scan_stats'][stat] = 100.0
+                        elif result['scan_stats'][stat] < 0:
+                            result['scan_stats'][stat] = 0.0
+                    elif stat in ['requests', 'tested_params'] and result['scan_stats'][stat] < 0:
+                        result['scan_stats'][stat] = 0
+                        
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Value conversion failed for {stat}: {str(e)}")
+                    result['scan_stats'][stat] = default
+            else:
                 result['scan_stats'][stat] = default
-                logger.warning(f"Failed to parse {stat}, using default {default}")
 
         result['valid'] = bool(result['vulnerabilities']) or any(
             v > 0 if isinstance(v, (int, float)) else v != '00:00:00'
             for v in result['scan_stats'].values()
         )
-
-        if not result['valid']:
-            error_msg = "Scan completed but found no vulnerabilities or meaningful statistics"
 
     except Exception as e:
         error_msg = f"Output parsing error: {str(e)}"
@@ -159,3 +164,4 @@ def run_toxin_scan(target_url: str) -> Dict[str, Any]:
             'tested_url': target_url,
             'debug': {'exception': str(e)}
         }
+
