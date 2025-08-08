@@ -86,7 +86,7 @@ def list_sessions():
 
 if __name__ == '__main__':
     # Ensure certificates exist before starting
-    if not toxssin.generate_certificates():
+    if not toxssin.validate_certificates():
         logger.error("Failed to generate SSL certificates - exiting")
         exit(1)
         
@@ -95,3 +95,4 @@ if __name__ == '__main__':
         toxssin.cert_path, 
         toxssin.key_path
     ))
+
