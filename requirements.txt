@@ -1,2 +1,4 @@
 # Core
 flask>=2.2,<3.0
+gunicorn==20.1.0
+pyOpenSSL==23.2.0
